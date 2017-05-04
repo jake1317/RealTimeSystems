@@ -27,8 +27,8 @@ public class RunSimulation {
 		new Travellers(sim).start(); 
 		
 		/* Run control program */
-		SingleSort.main(args);
-		
+		//SingleSort.main(args);
+		BagSort.main(args);
 	}
 
 }
