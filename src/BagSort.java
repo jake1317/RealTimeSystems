@@ -79,7 +79,9 @@ class FeedBelt extends Thread {
                         if(done == LONGTIME) { // WaitAfterBump
                             feedBelt.stop();
                             long delay = AFTERBUMP - (System.currentTimeMillis() - prevBagClk);
-                            Thread.sleep(delay); // wait until afterbump
+                            if(delay > 0) {
+                                Thread.sleep(delay); // wait until afterbump
+                            }
                             synchronized (lockObject) {
                                 while(System.currentTimeMillis() - prevBagClk <= AFTERBUMP && !prevBagReset) {
                                     lockObject.wait();
@@ -97,11 +99,14 @@ class FeedBelt extends Thread {
                                     done = timeDone(isLong(mask));
                                 }
                             }
-                            if(System.currentTimeMillis() - prevBagClk < BEFOREBUMP) { /* endNoChange */ }
+                            if(System.currentTimeMillis() - prevBagClk < BEFOREBUMP) { //endNoChange
+                            }
                             if((System.currentTimeMillis() - prevBagClk >= BEFOREBUMP) && (System.currentTimeMillis() - prevBagClk <= AFTERBUMP)) { // WaitNoBump
                                 feedBelt.stop();
                                 long delay = AFTERBUMP - (System.currentTimeMillis() - prevBagClk);
-                                Thread.sleep(delay); // wait until afterbump
+                                if(delay > 0){
+                                    Thread.sleep(delay); // wait until afterbump
+                                 }
                                 feedBelt.forward();
                                 synchronized (lockObject) {
                                     prevBagClk = System.currentTimeMillis();
@@ -119,9 +124,10 @@ class FeedBelt extends Thread {
                             bagWaiting = true;
                         }
                         feedBelt.stop();
-
                         long delay = done - (System.currentTimeMillis() - prevBagClk);
-                        Thread.sleep(delay);
+                        if(delay > 0) {
+                            Thread.sleep(delay);
+                        }
 
                         distBelt.reverseDirection();
                         feedBelt.forward();
