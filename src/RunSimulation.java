@@ -45,7 +45,7 @@ class Travellers extends Thread {
 		try {
 			while (true) {
 				sleep((int) (Math.random()*5000));
-				int counter = (Math.random() < 0.5 ? 2 : 2);  // Use only Feed 2 for SingleSort
+				int counter = (Math.random() < 0.5 ? 1 : 2);  // Use only Feed 2 for SingleSort
 				int color   = (Math.random() < 0.6 ? BagSortSim.YELLOW  : BagSortSim.BLACK);
 				sim.checkin(counter,color);
 			}

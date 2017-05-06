@@ -1,22 +1,34 @@
 import java.lang.System;
+
+import com.sun.jna.platform.win32.WinDef;
 import josx.platform.rcx.*;
+import kotlin.jvm.Synchronized;
 
 class FeedBelt extends Thread {
 
-    static final int BLOCKED = 70;
-    static final int YELLOW  = 60;
-    static final int BLACK   = 45;
+    static final int BLOCKED    = 70;
+    static final int YELLOW     = 60;
+    static final int BLACK      = 45;
+    static final int LONGTIME   = 11500;
+    static final int SHORTTIME  = 6000;
+    static final int AFTERBUMP  = 8000;
+    static final int BEFOREBUMP = 3000;
 
+    static Object lockObject = new Object();
     static boolean dirA; // Current direction is towards A
     static boolean bagWaiting = false; // true if bag is waiting to reverse the distribution belt
-    static boolean FB_Dir[] = {true, true}; // true if feed belt is moving forward
-    static boolean FBOccupied[] = {false, false}; // true if a bag is on a feed belt
-    static int done = 60; // used for comparison against prevBagClk
+    static boolean prevBagReset = false;
+    //static boolean FB_Dir[] = {true, true}; // true if feed belt is moving forward
+    //static boolean FBOccupied[] = {false, false}; // true if a bag is on a feed belt
+    static long done; // used for comparison against prevBagClk
+    static long prevBagClk;
 
     public Sensor s;
     public Motor feedBelt;
     public Motor distBelt;
     public short mask;
+
+    boolean destA; // destination is A
 
     public FeedBelt(Sensor s, Motor feedBelt, Motor distBelt, short mask){
         this.s = s;
@@ -27,36 +39,130 @@ class FeedBelt extends Thread {
 
     public void run() {
         try {
-            boolean destA;   // Required destination is A
-
             Poll e = new Poll();
 
             s.activate();
             feedBelt.forward();
             dirA = true;
 
+            done = timeDone(false);
+            prevBagClk = System.currentTimeMillis() - done;
+
             while (true) {
                 // Await arrival of a bag
                 while(s.readValue() > BLOCKED) { e.poll(mask,0); }
 
-                Thread.sleep(800);           // Wait for colour to be valid
+                Thread.sleep(800);           // SensorWait
 
-                destA = (s.readValue() > BLACK);   // Determine destination
+                destA = (s.readValue() > BLACK);   // SensorRead
 
-                Thread.sleep(2000);          // Advance beyond sensor
-                if (dirA != destA) {         // Decide whether to stop or not
+                Thread.sleep(2000);          // SensorRead
+
+                if(bagWaiting){ // WaitForReverse
                     feedBelt.stop();
-                    int now = (int) System.currentTimeMillis();
-                    if (now < done) Thread.sleep(done-now);
-                    distBelt.reverseDirection();
-                    dirA = destA;
+                    synchronized (lockObject) {
+                        while(bagWaiting) {
+                            lockObject.wait();
+                        }
+                    }
                     feedBelt.forward();
                 }
 
-                done = ((int) System.currentTimeMillis()) + 6000;
-                if (dirA) done = done + 5500;       // Extra time for long path
+                if(dirA == destA) { //beginNoChange
+                    if(isLong(mask)) {
+                        if(System.currentTimeMillis() - prevBagClk > AFTERBUMP || done == SHORTTIME) {
+                            synchronized (lockObject) {
+                                prevBagClk = System.currentTimeMillis();
+                                done = timeDone(isLong(mask));
+                            }
+                        }
+                        if(done == LONGTIME) { // WaitAfterBump
+                            feedBelt.stop();
+                            long delay = AFTERBUMP - (System.currentTimeMillis() - prevBagClk);
+                            Thread.sleep(delay); // wait until afterbump
+                            synchronized (lockObject) {
+                                while(System.currentTimeMillis() - prevBagClk <= AFTERBUMP && !prevBagReset) {
+                                    lockObject.wait();
+                                    prevBagReset = false;
+                                }
+                                prevBagClk = System.currentTimeMillis();
+                                feedBelt.forward();
+                                done = timeDone(isLong(mask));
+                            }
+                        }
+                        if(!isLong(mask)) { // ConsiderBumping
+                            if(System.currentTimeMillis() - prevBagClk > AFTERBUMP) { // endNoChange
+                                synchronized (lockObject){
+                                    prevBagClk = System.currentTimeMillis();
+                                    done = timeDone(isLong(mask));
+                                }
+                            }
+                            if(System.currentTimeMillis() - prevBagClk < BEFOREBUMP) { /* endNoChange */ }
+                            if((System.currentTimeMillis() - prevBagClk >= BEFOREBUMP) && (System.currentTimeMillis() - prevBagClk <= AFTERBUMP)) { // WaitNoBump
+                                feedBelt.stop();
+                                long delay = AFTERBUMP - (System.currentTimeMillis() - prevBagClk);
+                                Thread.sleep(delay); // wait until afterbump
+                                feedBelt.forward();
+                                synchronized (lockObject) {
+                                    prevBagClk = System.currentTimeMillis();
+                                    done = timeDone(isLong(mask));
+                                    prevBagReset = true;
+                                    lockObject.notify();
+                                }
+                            }
+                        }
+                    }
+                }
+                else { //beginReverse
+                    if(System.currentTimeMillis() - prevBagClk <= done) { //prevBagclk <= done
+                        synchronized (lockObject) {
+                            bagWaiting = true;
+                        }
+                        feedBelt.stop();
+
+                        long delay = done - (System.currentTimeMillis() - prevBagClk);
+                        Thread.sleep(delay);
+
+                        distBelt.reverseDirection();
+                        feedBelt.forward();
+                    }
+                    else {
+                        distBelt.reverseDirection();
+                    }
+
+                    synchronized (lockObject) {
+                        done = timeDone(isLong(mask));
+                        prevBagClk = System.currentTimeMillis();
+                        bagWaiting = false;
+                        lockObject.notify();
+                    }
+                }
+
+                synchronized (lockObject) {
+                    prevBagReset = false;
+                }
             }
         } catch (Exception e) { }
+    }
+
+    public boolean isLong(int mask) {
+        if(mask == Poll.SENSOR1_MASK) {
+            if(destA) {
+                return true;
+            }
+            return false;
+        }
+        if(destA){
+            return false;
+        }
+        return true;
+    }
+
+    public long timeDone(boolean isLong) {
+        if(isLong) {
+            return LONGTIME;
+        }
+        return SHORTTIME;
     }
 }
 
