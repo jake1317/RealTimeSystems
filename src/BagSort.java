@@ -69,7 +69,7 @@ class FeedBelt extends Thread {
 
                     feedBelt.stop();
                     synchronized (bagWaitLockObject) { // wait for bagwaiting to be false
-                        System.out.println("FB " + mask + " wait for reverse. DestA: " + destA);
+                        System.out.println("FB " + mask + " wait for reverse.");
                         while(bagWaiting) {
                             bagWaitLockObject.wait();
                         }
@@ -96,11 +96,10 @@ class FeedBelt extends Thread {
                             feedBelt.stop();
                             synchronized (timeLockObject) { // issues with dealing with broadcast channel (can enter deadlock)
                                 long timeAfterBump = AFTERBUMP + prevBagClk;
-                                System.out.println("FB " + mask + " wait to prevent too many bags on dist belt. DestA: " + destA);
+                                System.out.println("FB " + mask + " wait to prevent too many bags on dist belt");
                                 while (System.currentTimeMillis() < timeAfterBump) {
                                     timeLockObject.wait(timeAfterBump - System.currentTimeMillis());
                                 }
-                                System.out.println("done = " + done + ", prevBagClk = " + (System.currentTimeMillis() - prevBagClk));
                                 prevBagClk = System.currentTimeMillis();
                                 done = timeDone(isLong(mask));
                             }
@@ -127,19 +126,20 @@ class FeedBelt extends Thread {
 
                             feedBelt.stop();
                             synchronized (timeLockObject) {
-                                System.out.println("FB " + mask + " wait until after bump. DestA: " + destA);
-                                while(System.currentTimeMillis() - prevBagClk <= AFTERBUMP) {
-                                    timeLockObject.wait(AFTERBUMP - (System.currentTimeMillis() - prevBagClk)); // wait until afterbump
+                                System.out.println("FB " + mask + " wait until after bump");
+                                while(System.currentTimeMillis() - prevBagClk < AFTERBUMP) {
+                                    long delay = AFTERBUMP - (System.currentTimeMillis() - prevBagClk);
+                                    if(delay <= 0) {
+                                        break;
+                                    }
+                                    timeLockObject.wait(delay); // wait until afterbump
                                 }
                              }
                             feedBelt.forward();
                             synchronized (timeLockObject) {
-                                System.out.println("done = " + done + ", prevBagClk = " + (System.currentTimeMillis() - prevBagClk));
                                 if(!(done == LONGTIME && System.currentTimeMillis() - prevBagClk < BEFOREBUMP)) {
                                     prevBagClk = System.currentTimeMillis();
                                     done = timeDone(isLong(mask));
-                                } else {
-                                    System.out.println("gootteeeemmmm");
                                 }
                                 timeLockObject.notify();
                             }
@@ -156,9 +156,10 @@ class FeedBelt extends Thread {
                         }
 
                         feedBelt.stop();
-                        while(System.currentTimeMillis() - prevBagClk <= done) {
+                        while(System.currentTimeMillis() - prevBagClk < done) {
                             long delay = done - (System.currentTimeMillis() - prevBagClk);
-                            System.out.println("FB " + mask + " wait to reverse. Delay: " + delay);
+                            if(delay <= 0) { break; }
+                            System.out.println("FB " + mask + " wait to reverse");
                             Thread.sleep(delay);
                         }
 
