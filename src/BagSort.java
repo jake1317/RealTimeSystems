@@ -20,8 +20,8 @@ class FeedBelt extends Thread {
     static boolean bagWaiting = false; // true if bag is waiting to reverse the distribution belt
     //static boolean FB_Dir[] = {true, true}; // true if feed belt is moving forward
     //static boolean FBOccupied[] = {false, false}; // true if a bag is on a feed belt
-    static long done; // used for comparison against prevBagClk
-    static long prevBagClk;
+    static int done; // used for comparison against prevBagClk
+    static int prevBagClk;
 
     public Sensor s;
     public Motor feedBelt;
@@ -49,7 +49,7 @@ class FeedBelt extends Thread {
             // initialize done and prevBagclk
             synchronized (timeLockObject) {
                 done = timeDone(false);
-                prevBagClk = System.currentTimeMillis() - done;
+                prevBagClk = (int) System.currentTimeMillis() - done;
             }
 
             // begin infinite loop
@@ -86,7 +86,7 @@ class FeedBelt extends Thread {
                         if (System.currentTimeMillis() - prevBagClk > AFTERBUMP || done == SHORTTIME) {
 
                             synchronized (timeLockObject) {
-                                prevBagClk = System.currentTimeMillis();
+                                prevBagClk = (int) System.currentTimeMillis();
                                 done = timeDone(isLong(mask));
                             }
                         }
@@ -95,12 +95,12 @@ class FeedBelt extends Thread {
 
                             feedBelt.stop();
                             synchronized (timeLockObject) { // issues with dealing with broadcast channel (can enter deadlock)
-                                long timeAfterBump = AFTERBUMP + prevBagClk;
+                                int timeAfterBump = (int) (AFTERBUMP + prevBagClk);
                                 System.out.println("FB " + mask + " wait to prevent too many bags on dist belt");
                                 while (System.currentTimeMillis() < timeAfterBump) {
                                     timeLockObject.wait(timeAfterBump - System.currentTimeMillis());
                                 }
-                                prevBagClk = System.currentTimeMillis();
+                                prevBagClk = (int) System.currentTimeMillis();
                                 done = timeDone(isLong(mask));
                             }
                             feedBelt.forward();
@@ -112,7 +112,7 @@ class FeedBelt extends Thread {
                         // no need to wait, bag is entering after other bag
                         if(System.currentTimeMillis() - prevBagClk > AFTERBUMP) {
                             synchronized (timeLockObject){
-                                prevBagClk = System.currentTimeMillis();
+                                prevBagClk = (int) System.currentTimeMillis();
                                 done = timeDone(isLong(mask));
                             }
                         }
@@ -128,7 +128,7 @@ class FeedBelt extends Thread {
                             synchronized (timeLockObject) {
                                 System.out.println("FB " + mask + " wait until after bump");
                                 while(System.currentTimeMillis() - prevBagClk < AFTERBUMP) {
-                                    long delay = AFTERBUMP - (System.currentTimeMillis() - prevBagClk);
+                                    int delay = (int) (AFTERBUMP - (System.currentTimeMillis() - prevBagClk));
                                     if(delay <= 0) {
                                         break;
                                     }
@@ -138,7 +138,7 @@ class FeedBelt extends Thread {
                             feedBelt.forward();
                             synchronized (timeLockObject) {
                                 if(!(done == LONGTIME && System.currentTimeMillis() - prevBagClk < BEFOREBUMP)) {
-                                    prevBagClk = System.currentTimeMillis();
+                                    prevBagClk = (int) System.currentTimeMillis();
                                     done = timeDone(isLong(mask));
                                 }
                                 timeLockObject.notify();
@@ -157,7 +157,7 @@ class FeedBelt extends Thread {
 
                         feedBelt.stop();
                         while(System.currentTimeMillis() - prevBagClk < done) {
-                            long delay = done - (System.currentTimeMillis() - prevBagClk);
+                            int delay = (int) (done - (System.currentTimeMillis() - prevBagClk));
                             if(delay <= 0) { break; }
                             System.out.println("FB " + mask + " wait to reverse");
                             Thread.sleep(delay);
@@ -180,7 +180,7 @@ class FeedBelt extends Thread {
                     //reset variables and release a potentially waiting bag on the other feed belt
                     synchronized (timeLockObject) {
                         done = timeDone(isLong(mask));
-                        prevBagClk = System.currentTimeMillis();
+                        prevBagClk = (int) System.currentTimeMillis();
                     }
                     synchronized (bagWaitLockObject) {
                         bagWaiting = false;
@@ -207,7 +207,7 @@ class FeedBelt extends Thread {
     }
 
     // mapping booleans to constants
-    public long timeDone(boolean isLong) {
+    public int timeDone(boolean isLong) {
         return isLong? LONGTIME: SHORTTIME;
     }
 }
